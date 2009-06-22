@@ -29,6 +29,7 @@ Examples:
   %prog lastfm://usertags/liago0sh/positive
   %prog -s "lastfm://usertags/liago0sh/heavy electro" -d
 '''
+from __future__ import with_statement
 
 import atexit
 import codecs
@@ -765,13 +766,13 @@ class GUI(object):
 
         self.station.set_text(self.config.station or '')
         station_type = self.config.station_type 
-        if not station_type:
-            # Set My Radio
-            station_type = 'user'
-        iter = [ row.iter for row in self.station_store
-                 if row[2] == station_type ][0]
-        self.station_type.set_active_iter(iter)
-        self.on_station_type_chanded(self.station_type)
+        if station_type:
+            iter = [ row.iter for row in self.station_store
+                     if row[2] == station_type ][0]
+            self.station_type.set_active_iter(iter)
+        else:
+            self.station_type.set_active(0)
+        self.url_status_message()
 
         username = self.options.username
         passwordmd5 = self.options.passwordmd5
