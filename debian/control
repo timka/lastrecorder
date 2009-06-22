@@ -1,0 +1,25 @@
+Source: lastrecorder
+Section: sound
+Priority: extra
+Maintainer: Timur Izhbulatov <timochka@gmail.com>
+Build-Depends: cdbs, debhelper (>= 7)
+Standards-Version: 3.8.0
+Homepage: http://timka.org/lastrecorder/
+
+Package: lastrecorder
+Architecture: any
+Depends: ${python:Depends}
+Suggests: python-gtk2, python-mutagen
+XB-Python-Version: ${python:Versions}
+Description: Last.fm audio stream recorder
+ Last Recorder is a small program that can save Last.fm audio streams as mp3 files.
+ .
+ Features:
+  * automatic ID3 tags (optional, requires python-mutagen)
+  * skipping already recorded tracks automatically (optional) 
+  * <artist>/<album>/<title>.mp3 naming scheme
+  * stripping Windows-incompatible characters and whitespaces from file names (optional)
+  * simple command line interface
+  * GTK+ graphical interface (optional, requires python-gtk2)
+  * quoting URL's automatically ("lastfm://globaltags/russian rock" ->
+    "lastfm://globaltags/russian%20rock")
