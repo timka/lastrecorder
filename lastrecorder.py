@@ -34,6 +34,7 @@ from __future__ import with_statement
 import atexit
 import codecs
 import encodings.utf_8
+import errno
 import getpass
 import httplib
 import locale
@@ -44,6 +45,7 @@ import shutil
 import socket
 import sys
 import tempfile
+import threading
 import time
 import types
 import urllib2
@@ -59,10 +61,14 @@ except ImportError:
     mutagen = None
 try:
     import pygtk
-    pygtk.require("2.0")
-    import gtk
 except ImportError:
     pygtk = None
+else:
+    pygtk.require("2.0")
+    import gobject
+    import gtk
+    gtk.gdk.threads_init()
+
 
 from optparse import OptionParser
 from ConfigParser import SafeConfigParser, NoOptionError, NoSectionError
@@ -194,6 +200,10 @@ class Track(dict):
                 return path
         return None
 
+    @property
+    def name(self):
+        return '%(creator)s — %(title)s' % self
+
 
 class XSPFHandler(xml.sax.ContentHandler):
     '''XSPF playilst parser. Saves tracks into ``self.tracks`` as ``dict``s 
@@ -245,15 +255,15 @@ class RadioClient(object):
 
     def __init__(self, username=None, passwordmd5=None, outdir=None,
                  strip_windows_incompat=False, strip_spaces=False,
-                 skip_existing=False, progress_callback=None):
+                 skip_existing=False, progress_cb=None):
         self.username = username
         self.passwordmd5 = passwordmd5
         self.outdir = outdir
         self.strip_windows_incompat = strip_windows_incompat
         self.strip_spaces = strip_spaces
         self.skip_existing = skip_existing
-        if progress_callback is not None:
-            self.progress_callback = progress_callback
+        if progress_cb is not None:
+            self.progress_cb = progress_cb
 
         self.session = None
         self.station_name = None
@@ -262,7 +272,19 @@ class RadioClient(object):
         self.temp_files = set()
         atexit.register(self.remove_temp_files)
 
-    def progress_callback(self, track, position, length):
+    def progress_cb(self, track, position, length):
+        pass
+
+    def track_skip_cb(self, track):
+        pass
+
+    def track_start_cb(self, track):
+        pass
+
+    def track_end_cb(self, track):
+        pass
+
+    def read_cb(self):
         pass
 
     def remove_temp_files(self):
@@ -274,6 +296,7 @@ class RadioClient(object):
 
     def urlopen(self, *args, **kw):
         res = urllib2.urlopen(*args, **kw)
+        self.log.debug(dir(res.fp._sock.fp))
         self.log.debug([res.code, res.msg])
         self.log.debug('headers:\n%s' % ''.join(res.headers.headers))
         return res
@@ -368,47 +391,65 @@ class RadioClient(object):
 
         self.log.debug('tracks:\n%s', pformat(self.tracks))
         self.log.info('Tracks:\n%s',
-            ''.join([ '%(creator)s - %(title)s\n' % t for t in self.tracks ]))
+            ''.join([ '%s\n' % t.name for t in self.tracks ]))
 
     def handle_tracks(self):
-        log = self.log
         if not os.path.exists(self.outdir):
             os.makedirs(self.outdir)
         for track in self.tracks:
             if self.skip_existing_track(track):
+                self.call(self.track_skip_cb, track)
                 continue
-
-            # Handle audio/mpeg stream
-            prefix = '.lastfm-stream-%s.' % track.make_filename()
-            fd, tmp = tempfile.mkstemp(dir=self.outdir, prefix=prefix)
-            log.debug('tmp: %s', tmp)
-            self.temp_files.add(tmp)
-            fp = os.fdopen(fd, 'w+b')
-            exceptions = (IOError, OSError, socket.error, httplib.HTTPException)
-            msg = '%(creator)s - %(title)s' % track 
-            log.info(msg)
             try:
-                self.handle_stream(track, fp)
-            except urllib2.HTTPError, e:
-                if e.code == 403:
-                    log.error(e)
-                    log.info('Skipping %s', msg)
-                else:
-                    raise e
-            except exceptions, e:
-                log.error('%s', e, exc_info=True)
+                self.handle_track(track)
             except KeyboardInterrupt:
-                log.info('Interrupted. Skipping track.')
+                self.call(self.track_skip_cb, track)
+                self.log.info('Interrupted. Skipping track.')
                 time.sleep(0.2)
+            except SkipTrack:
+                self.call(self.track_skip_cb, track)
+
+    def call(self, callback, *args, **kw):
+        try:
+            callback(*args, **kw)
+        except Exception, e:
+            msg = 'Unhandled exception in callback: %s: %s'
+            self.log.exception(msg, callback, e)
+
+    def handle_track(self, track):
+        log = self.log
+        try:
+            self.call(self.track_start_cb, track)
+        except Exception, e:
+            log.exception(e)
+        # Handle audio/mpeg stream
+        prefix = '.lastfm-stream-%s.' % track.make_filename()
+        fd, tmp = tempfile.mkstemp(dir=self.outdir, prefix=prefix)
+        log.debug('tmp: %s', tmp)
+        self.temp_files.add(tmp)
+        fp = os.fdopen(fd, 'w+b')
+        exceptions = (IOError, OSError, socket.error, httplib.HTTPException)
+        log.info(track.name)
+        try:
+            self.handle_stream(track, fp)
+        except urllib2.HTTPError, e:
+            if e.code == 403:
+                log.error(e)
+                log.info('Skipping %s', msg)
             else:
-                self.finish_track(track, fp, tmp)
-            finally:
-                if os.path.exists(tmp):
-                    log.debug('Removing %s', tmp)
-                    try:
-                        os.unlink(tmp)
-                    except (IOError, OSError):
-                        pass
+                raise e
+        except exceptions, e:
+            log.exception(e)
+        else:
+            self.finish_track(track, fp, tmp)
+            self.call(self.track_end_cb, track)
+        finally:
+            if os.path.exists(tmp):
+                log.debug('Removing %s', tmp)
+                try:
+                    os.unlink(tmp)
+                except (IOError, OSError):
+                    pass
 
     def skip_existing_track(self, track):
         if not self.skip_existing:
@@ -429,20 +470,19 @@ class RadioClient(object):
         except urllib2.HTTPError, e:
             self.log.error('%s', e, exc_info=True)
             return
+        res.fp._sock.fp._sock.setblocking(False)
         data = None
         while data is None:
             try:
-                # XXX A workaround for issue #1327971
-                # http://bugs.python.org/issue1327971
-                fileno = res.fp._sock.fp.fileno()
-                r, w, x = select.select([fileno], [], [fileno], SOCKET_TIMEOUT)
+                r = self._socket_select(res)
             except (IOError, OSError), e:
                 self.log.debug('%s', e, exc_info=True)
                 continue
             try:
                 data = res.fp.read(SOCKET_READ_SIZE)
             except (IOError, OSError), e:
-                self.log.debug('%s', e, exc_info=True)
+                if e.args[0] != errno.EAGAIN:
+                    self.log.debug('%s', e, exc_info=True)
                 continue
 
     def finish_track(self, track, fp, tmp):
@@ -501,6 +541,7 @@ class RadioClient(object):
         '''
         log = self.log
         res = self.urlopen(track['location'])
+        res.fp._sock.fp._sock.setblocking(False)
         try:
             length = self.get_content_length(res)
         except ValueError:
@@ -510,12 +551,9 @@ class RadioClient(object):
         count = 0
         while True:
             try:
-                # XXX A workaround for issue #1327971
-                # http://bugs.python.org/issue1327971
-                fileno = res.fp._sock.fp.fileno()
-                r, w, x = select.select([fileno], [], [fileno], SOCKET_TIMEOUT)
+                r = self._socket_select(res)
             except (IOError, OSError), e:
-                log.error('%s', e, exc_info=True)
+                log.exception(e)
                 continue
             if not r:
                 log.error('Read timeout reached')
@@ -524,13 +562,25 @@ class RadioClient(object):
                 data = res.fp.read(SOCKET_READ_SIZE)
                 count += len(data)
                 fp.write(data)
-                self.progress_callback(track, count, length)
+                self.call(self.progress_cb, track, count, length)
             except (IOError, OSError), e:
-                log.error('%s', e, exc_info=True)
+                if e.args[0] != errno.EAGAIN:
+                    log.exception(e)
                 continue
             if count >= length:
                 fp.flush()
                 break
+
+    def _socket_select(self, res):
+        for i in range(int(SOCKET_TIMEOUT * 10)):
+            # XXX A workaround for issue #1327971
+            # http://bugs.python.org/issue1327971
+            fileno = res.fp._sock.fp.fileno()
+            r, w, x = select.select([fileno], [], [fileno], 0.1)
+            if r:
+                break
+            self.call(self.read_cb)
+        return r
 
     def loop(self, urls):
         log = self.log
@@ -642,7 +692,13 @@ class Config(object):
             return
 
 
+class SkipTrack(BaseException):
+    pass
+
 class GUI(object):
+    class LoopBreak(BaseException):
+        pass
+
     def __init__(self, config, options, urls):
         self.log = log = logging.getLogger(self.__class__.__name__)
         log.debug('config: %s', dict(config))
@@ -651,6 +707,9 @@ class GUI(object):
         self.options = options
         self.urls = urls
         self.radio_client = RadioClient()
+        self.break_loop = False
+        self.skip_track = False
+        self.radio_thread = None
 
         self.builder = builder = gtk.Builder()
         filename = '%s.glade' % NAME
@@ -680,16 +739,14 @@ class GUI(object):
         self.loginsave = builder.get_object('loginsave')
         self.statusbar = builder.get_object('statusbar')
         self.context_id = self.statusbar.get_context_id('Station')
+        self.progress = builder.get_object('progress')
+        self.init_progress()
+        self.record = self.builder.get_object('record')
+        self.stop = self.builder.get_object('stop')
 
         self.init_view()
         self.connect_signals()
         self.window.show()
-
-    def on_window_destroy(self, widget, data=None):
-        self.update_password()
-        self.update_config()
-        self.write_config()
-        gtk.main_quit()
 
     def connect_signals(self):
         self.outdir.connect('current_folder_changed',
@@ -704,39 +761,37 @@ class GUI(object):
                                dict(name='save'))
 
         self.username.connect('changed', self.on_username_changed)
-
+        self.password.connect('key-press-event',
+                              self.on_password_key_press_event)
         self.station.connect('changed', self.on_station_changed)
         self.station_type.connect('changed', self.on_station_type_chanded)
 
         loginapply = self.builder.get_object('loginapply')
         loginapply.connect('clicked', self.on_loginapply_clicked)
 
+        self.record.connect('clicked', self.on_record_clicked)
+        self.stop.connect('clicked', self.on_stop_clicked)
+
+        next = self.builder.get_object('next')
+        next.connect('clicked', self.on_next_clicked)
+
         self.window.connect('destroy', self.on_window_destroy)
 
-    def on_username_changed(self, widget, data=None):
-        self.options.username = widget.get_text()
+    def init_radio_thread(self):
+        self.radio_thread = threading.Thread(name='radio', target=self.loop)
+        self.radio_thread.daemon = True
 
-    def on_outdir_current_folder_changed(self, widget, data=None):
-        self.options.outdir = widget.get_filename()
-
-    def on_station_changed(self, widget, data=None):
-        self.config.station = widget.get_text()
-        self.url_status_message()
-
-    def on_station_type_chanded(self, widget, data=None):
-        row = self.station_store[widget.get_active()]
-        station_type = row[2]
-        self.config.station_type = station_type 
-        if station_type == 'custom':
-            self.station.set_text('lastfm://')
-        else:
-            self.station.set_text('')
-        self.station.grab_focus()
-        self.url_status_message()
+    def init_progress(self):
+        self.progress.set_text('Idle')
+        self.progress.set_fraction(0)
 
     def url_status_message(self):
-        self.statusbar.push(self.context_id,
-                            'Station URL: %s' % self.station_url)
+        self.update_status('Station URL: %s' % self.station_url)
+
+    def update_status(self, message, *args):
+        message = message % args
+        self.log.info('Status: %s', message)
+        self.statusbar.push(self.context_id, message)
 
     @property
     def station_url(self):
@@ -748,13 +803,6 @@ class GUI(object):
         if self.options.quote:
             url = quote_url(url)
         return url
-
-    def on_option_toggled(self, widget, data):
-        value = widget.get_active()
-        name = data['name']
-        setattr(self.options, name, value)
-        if name == 'save':
-            self.update_password()
 
     def init_view(self):
         options = self.options
@@ -788,23 +836,11 @@ class GUI(object):
             login.set_expanded(True)
             self.password.grab_focus()
             return
-        self.set_password_text()
-
-    def set_password_text(self):
         self.password.set_text('*' * 10)
-
-    def on_loginapply_clicked(self, *args, **kw):
-        self.update_password()
-        self.write_config()
-        self.set_password_text()
-        self.login.set_expanded(False)
-        #self.station.grab_focus()
 
     def update_password(self):
         if self.options.save:
-            password = self.password.get_text()
-            if password:
-                self.config.passwordmd5 = md5(password).hexdigest()
+            self.config.passwordmd5 = self.options.passwordmd5 
         else:
             self.config.clear_password()
 
@@ -820,6 +856,157 @@ class GUI(object):
             self.config.write()
         except (IOError, OSError), e:
             self.log.exception('Error saving config file: %s', e)
+
+    def loop(self):
+        try:
+            self.handle_radio()
+        except self.LoopBreak:
+            return
+
+    def handle_radio(self):
+        log = self.log
+        url = self.station_url
+        radio = self.radio_client
+        radio.handshake()
+
+        while True:
+            self.update_status('Tuning to %s ...', url)
+            try:
+                radio.adjust(url)
+            except InvalidURL, e:
+                self.update_status('Invalid URL: %s', url)
+                break
+            except NoContentAvailable:
+                self.update_status('No content available for "%s"', url)
+                break
+            except AdjustError, e:
+                self.update_status('Failed to tune to "%s": %s', url, e)
+                break
+            except (httplib.HTTPException, urllib2.URLError, IOError,
+                    socket.error), e:
+                msg = 'Failed to tune to "%s": %s', url, e
+                log.exception(msg)
+                self.update_status(msg)
+                break
+
+            delay = BackoffDelay()
+            while True:
+                self.update_status('Requesting tracks ...')
+                try:
+                    radio.xspf()
+                except urllib2.HTTPError, e:
+                    if e.code == 503:
+                        delay.sleep()
+                else:
+                    break
+
+            radio.handle_tracks()
+
+    def check_falgs(self):
+        if self.break_loop:
+            self.break_loop = False
+            raise self.LoopBreak
+        if self.skip_track:
+            self.skip_track = False
+            raise SkipTrack
+
+    def progress_cb(self, track, position, length):
+        self.check_falgs()
+        fraction = float(position) / float(length)
+        self.progress.set_fraction(fraction)
+        percent = fraction * 100
+        msg = '%s: %0.1f%%' % (track.name, percent)
+        self.progress.set_text(msg)
+
+    def read_cb(self):
+        self.check_falgs()
+
+    def track_start_cb(self, track):
+        self.progress.set_text(track.name)
+        self.update_status(track.name)
+
+    def track_end_cb(self, track):
+        self.update_status('')
+
+    def track_skip_cb(self, track):
+        self.update_status('Skipped %s', track.name)
+
+    def on_window_destroy(self, widget, data=None):
+        self.update_password()
+        self.update_config()
+        self.write_config()
+        gtk.main_quit()
+
+    def on_record_clicked(self, widget, data=None):
+        assert self.options.username
+        assert self.options.passwordmd5
+        widget.hide()
+        self.stop.show()
+        self.stop.grab_focus()
+        for name in ['username', 'passwordmd5', 'outdir', 'skip_existing',
+                     'strip_windows_incompat', 'strip_spaces']:
+            value = getattr(self.options, name)
+            setattr(self.radio_client, name, value)
+        self.radio_client.progress_cb = self.progress_cb
+        self.radio_client.track_start_cb = self.track_start_cb
+        self.radio_client.track_end_cb = self.track_end_cb
+        self.radio_client.track_skip_cb = self.track_skip_cb
+        self.radio_client.read_cb = self.read_cb
+        self.break_loop = False
+        self.init_radio_thread()
+        self.radio_thread.start()
+
+    def on_stop_clicked(self, widget, data=None):
+        widget.hide()
+        self.record.show()
+        self.record.grab_focus()
+        self.break_loop = True
+        if self.radio_thread is not None:
+            self.radio_thread.join()
+        self.radio_thread = None
+        self.init_progress()
+        self.url_status_message()
+
+    def on_next_clicked(self, widget, data=None):
+        self.skip_track = True
+
+    def on_username_changed(self, widget, data=None):
+        self.options.username = widget.get_text()
+
+    def on_password_key_press_event(self, widget, event, data=None):
+        self.options.passwordmd5 = md5(widget.get_text()).hexdigest()
+        self.log.debug('passwordmd5: %s', self.options.passwordmd5)
+
+    def on_outdir_current_folder_changed(self, widget, data=None):
+        self.options.outdir = widget.get_filename()
+
+    def on_station_changed(self, widget, data=None):
+        self.config.station = widget.get_text()
+        self.url_status_message()
+
+    def on_station_type_chanded(self, widget, data=None):
+        row = self.station_store[widget.get_active()]
+        station_type = row[2]
+        self.config.station_type = station_type 
+        if station_type == 'custom':
+            self.station.set_text('lastfm://')
+        else:
+            self.station.set_text('')
+        self.station.grab_focus()
+        self.url_status_message()
+
+    def on_option_toggled(self, widget, data):
+        value = widget.get_active()
+        name = data['name']
+        setattr(self.options, name, value)
+        if name == 'save':
+            self.update_password()
+
+    def on_loginapply_clicked(self, *args, **kw):
+        self.update_password()
+        self.write_config()
+        self.login.set_expanded(False)
+        #self.station.grab_focus()
 
 
 def setup_urllib2():
@@ -894,7 +1081,7 @@ def setup_logging(options):
         format="%(asctime)s %(name)s %(levelname)8s: %(message)s")
 
 
-def progress_callback(track, position, length):
+def progress_cb(track, position, length):
     percent = float(position) / float(length) * 100
     msg = '    %d/%d (%0.2f%%)\r'
     msg = msg % (position, length, percent)
@@ -1024,7 +1211,7 @@ def main():
     radio_client = RadioClient(username, passwordmd5, options.outdir,
                                options.strip_windows_incompat,
                                options.strip_spaces, options.skip_existing,
-                               progress_callback)
+                               progress_cb)
     try:
         radio_client.loop(urls)
     except HandshakeError, e:
