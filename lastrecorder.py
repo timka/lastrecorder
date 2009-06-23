@@ -296,7 +296,6 @@ class RadioClient(object):
 
     def urlopen(self, *args, **kw):
         res = urllib2.urlopen(*args, **kw)
-        self.log.debug(dir(res.fp._sock.fp))
         self.log.debug([res.code, res.msg])
         self.log.debug('headers:\n%s' % ''.join(res.headers.headers))
         return res
@@ -788,14 +787,14 @@ class GUI(object):
     def url_status_message(self):
         self.update_status('Station URL: %s' % self.station_url)
 
-    def update_status(self, message, *args):
-        message = message % args
+    def update_status(self, message):
         self.log.info('Status: %s', message)
         self.statusbar.push(self.context_id, message)
 
     @property
     def station_url(self):
         row = self.station_store[self.station_type.get_active()]
+        self.log.debug('station row: %s', list(row))
         template = row[1]
         self.config.station_type = row[2]
         url = template % dict(username=self.options.username,
@@ -870,21 +869,21 @@ class GUI(object):
         radio.handshake()
 
         while True:
-            self.update_status('Tuning to %s ...', url)
+            self.update_status('Tuning to %s ...' % url)
             try:
                 radio.adjust(url)
             except InvalidURL, e:
-                self.update_status('Invalid URL: %s', url)
+                self.update_status('Invalid URL: %s' % url)
                 break
             except NoContentAvailable:
-                self.update_status('No content available for "%s"', url)
+                self.update_status('No content available for %s' % url)
                 break
             except AdjustError, e:
-                self.update_status('Failed to tune to "%s": %s', url, e)
+                self.update_status('Failed to tune to %s: %s' % (url, e))
                 break
             except (httplib.HTTPException, urllib2.URLError, IOError,
                     socket.error), e:
-                msg = 'Failed to tune to "%s": %s', url, e
+                msg = 'Failed to tune to %s: %s' % (url, e)
                 log.exception(msg)
                 self.update_status(msg)
                 break
