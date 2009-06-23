@@ -16,10 +16,12 @@ Description: Last.fm audio stream recorder
  .
  Features:
   * automatic ID3 tags (optional, requires python-mutagen)
+  * easy graphical interface (optional, requires python-gtk2)
+  * selectable standard stations (Tag, Artist, Loved, etc.)
+  * custom station URL's
+  * simple command line interface
   * skipping already recorded tracks automatically (optional) 
   * <artist>/<album>/<title>.mp3 naming scheme
   * stripping Windows-incompatible characters and whitespaces from file names (optional)
-  * simple command line interface
-  * GTK+ graphical interface (optional, requires python-gtk2)
   * quoting URL's automatically ("lastfm://globaltags/russian rock" ->
     "lastfm://globaltags/russian%20rock")
