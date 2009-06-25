@@ -423,7 +423,7 @@ class RadioClient(object):
         except Exception, e:
             log.exception(e)
         # Handle audio/mpeg stream
-        prefix = '.lastfm-stream-%s.' % track.make_filename()
+        prefix = '.%s.' % track.make_filename()
         fd, tmp = tempfile.mkstemp(dir=self.outdir, prefix=prefix)
         log.debug('tmp: %s', tmp)
         self.temp_files.add(tmp)
@@ -476,17 +476,18 @@ class RadioClient(object):
             try:
                 r = self._socket_select(res)
             except (IOError, OSError), e:
-                self.log.debug('%s', e, exc_info=True)
+                self.log.exception('skip_track: select: %s', e)
                 continue
             try:
                 data = res.fp.read(SOCKET_READ_SIZE)
-            except (socket.error, IOError, OSError), e:
+            except (socket.error, IOError), e:
                 err = errno.EAGAIN
                 if IS_WINDOWS:
                     err = 10035
                 if e.args[0] != err:
                     self.log.exception('skip_track: read: %s', e)
-                continue
+            except OSError, e:
+                self.log.exception('skip_track: read: %s', e)
 
     def finish_track(self, track, fp, tmp):
         self.log.debug('\n')
@@ -556,7 +557,7 @@ class RadioClient(object):
             try:
                 r = self._socket_select(res)
             except (IOError, OSError), e:
-                log.exception(e)
+                log.exception('handle_stream: select: %s', e)
                 continue
             if not r:
                 log.error('Read timeout reached')
@@ -566,13 +567,14 @@ class RadioClient(object):
                 count += len(data)
                 fp.write(data)
                 self.call(self.progress_cb, track, count, length)
-            except (socket.error, IOError, OSError), e:
+            except (socket.error, IOError), e:
                 err = errno.EAGAIN
                 if IS_WINDOWS:
                     err = 10035
                 if e.args[0] != err:
                     log.exception(e)
-                continue
+            except OSError, e:
+                log.exception('handle_stream: read: %s', e)
             if count >= length:
                 fp.flush()
                 break
@@ -795,6 +797,7 @@ class GUI(object):
         self.update_status('Station URL: %s' % self.station_url)
 
     def update_status(self, message):
+        message = str(message)
         self.log.info('Status: %s', message)
         self.statusbar.push(self.context_id, message)
 
@@ -868,6 +871,8 @@ class GUI(object):
             self.handle_radio()
         except self.LoopBreak:
             return
+        except Exception, e:
+            self.log.exception('loop: %s', e)
         finally:
             self.init_record()
 
@@ -882,7 +887,7 @@ class GUI(object):
             try:
                 radio.adjust(url)
             except InvalidURL, e:
-                self.update_status('Invalid URL: %s' % url)
+                self.update_status(e)
                 break
             except NoContentAvailable:
                 self.update_status('No content available for %s' % url)
@@ -938,9 +943,11 @@ class GUI(object):
 
     def track_skip_cb(self, track):
         self.update_status('Skipped %s', track.name)
-        self.init_progress()
 
     def on_window_destroy(self, widget, data=None):
+        self.break_loop = True
+        if self.radio_thread is not None and self.radio_thread.isAlive():
+            self.radio_thread.join()
         self.update_password()
         self.update_config()
         self.write_config()
@@ -1091,6 +1098,12 @@ def setup_logging(options):
     if options.debug:
         level = logging.DEBUG
     logfile = os.path.join(DOTDIR, 'lastrecorder.log')
+    errfile = logfile
+    sys.stderr.flush()
+    stdin = open('/dev/null', 'r')
+    stderr = open(errfile, 'wa', 0)
+    os.dup2(stdin.fileno(), sys.stdin.fileno())
+    os.dup2(stderr.fileno(), sys.stderr.fileno())
     handler = logging.handlers.RotatingFileHandler(logfile, 'a',
                                                    10 * 1024 * 1024, 1)
     handler.setLevel(logging.DEBUG)
