@@ -39,6 +39,7 @@ import getpass
 import httplib
 import locale
 import logging
+import logging.handlers
 import os
 import select
 import shutil
@@ -479,9 +480,12 @@ class RadioClient(object):
                 continue
             try:
                 data = res.fp.read(SOCKET_READ_SIZE)
-            except (IOError, OSError), e:
-                if e.args[0] != errno.EAGAIN:
-                    self.log.debug('%s', e, exc_info=True)
+            except (socket.error, IOError, OSError), e:
+                err = errno.EAGAIN
+                if IS_WINDOWS:
+                    err = 10035
+                if e.args[0] != err:
+                    self.log.exception('skip_track: read: %s', e)
                 continue
 
     def finish_track(self, track, fp, tmp):
@@ -562,8 +566,11 @@ class RadioClient(object):
                 count += len(data)
                 fp.write(data)
                 self.call(self.progress_cb, track, count, length)
-            except (IOError, OSError), e:
-                if e.args[0] != errno.EAGAIN:
+            except (socket.error, IOError, OSError), e:
+                err = errno.EAGAIN
+                if IS_WINDOWS:
+                    err = 10035
+                if e.args[0] != err:
                     log.exception(e)
                 continue
             if count >= length:
@@ -861,6 +868,8 @@ class GUI(object):
             self.handle_radio()
         except self.LoopBreak:
             return
+        finally:
+            self.init_record()
 
     def handle_radio(self):
         log = self.log
@@ -929,6 +938,7 @@ class GUI(object):
 
     def track_skip_cb(self, track):
         self.update_status('Skipped %s', track.name)
+        self.init_progress()
 
     def on_window_destroy(self, widget, data=None):
         self.update_password()
@@ -939,7 +949,7 @@ class GUI(object):
     def on_record_clicked(self, widget, data=None):
         assert self.options.username
         assert self.options.passwordmd5
-        widget.hide()
+        self.record.hide()
         self.stop.show()
         self.stop.grab_focus()
         for name in ['username', 'passwordmd5', 'outdir', 'skip_existing',
@@ -952,22 +962,27 @@ class GUI(object):
         self.radio_client.track_skip_cb = self.track_skip_cb
         self.radio_client.read_cb = self.read_cb
         self.break_loop = False
+        self.skip_track = False
         self.init_radio_thread()
         self.radio_thread.start()
 
     def on_stop_clicked(self, widget, data=None):
-        widget.hide()
-        self.record.show()
-        self.record.grab_focus()
+        self.init_record()
         self.break_loop = True
         if self.radio_thread is not None:
             self.radio_thread.join()
         self.radio_thread = None
-        self.init_progress()
         self.url_status_message()
 
+    def init_record(self):
+        self.stop.hide()
+        self.record.show()
+        self.record.grab_focus()
+        self.init_progress()
+
     def on_next_clicked(self, widget, data=None):
-        self.skip_track = True
+        if self.radio_thread is not None and self.radio_thread.isAlive():
+            self.skip_track = True
 
     def on_username_changed(self, widget, data=None):
         self.options.username = widget.get_text()
@@ -1075,9 +1090,16 @@ def setup_logging(options):
     level = logging.INFO
     if options.debug:
         level = logging.DEBUG
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(name)s %(levelname)8s: %(message)s")
+    logfile = os.path.join(DOTDIR, 'lastrecorder.log')
+    handler = logging.handlers.RotatingFileHandler(logfile, 'a',
+                                                   10 * 1024 * 1024, 1)
+    handler.setLevel(logging.DEBUG)
+    format= '%(asctime)s %(name)s %(levelname)8s: %(message)s'
+    formatter = logging.Formatter(format)
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.addHandler(handler)
 
 
 def progress_cb(track, position, length):
@@ -1087,52 +1109,11 @@ def progress_cb(track, position, length):
     sys.stderr.write(msg)
 
 
-def fix_logging():
-    '''
-    Fix encoding problems with logging to console
-    '''
-    # We can only work in utf-8
-    reload(sys).setdefaultencoding('utf-8')
-
-    if not IS_WINDOWS:
-        return
-
-    import win32console
-
-    cp = win32console.GetConsoleCP()
-    output_cp = win32console.GetConsoleOutputCP()
-    def set_cp():
-        win32console.SetConsoleCP(cp)
-        win32console.SetConsoleOutputCP(output_cp)
-    atexit.register(set_cp)
-
-    win32console.SetConsoleCP(65001)
-    win32console.SetConsoleOutputCP(65001)
-
-    class StreamHandler(logging.StreamHandler):
-        def emit(self, record):
-            try:
-                msg = self.format(record)
-                try:
-                    self.stream.write('%s\n' % msg)
-                except IOError, e:
-                    if e.args[0] != 0:
-                        raise e
-                self.flush()
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except:
-                self.handleError(record)
-
-    logging.StreamHandler = StreamHandler
-
-
 def setup():
     config = Config()
     config.parse()
 
     parser, options, urls = parse_args(config)
-    fix_logging()
     setup_logging(options)
     log = logging.getLogger('setup')
 
