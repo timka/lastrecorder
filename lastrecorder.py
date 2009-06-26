@@ -67,6 +67,7 @@ except ImportError:
 else:
     pygtk.require("2.0")
     import gobject
+    from gobject import idle_add
     import gtk
     gtk.gdk.threads_init()
 
@@ -77,6 +78,7 @@ from pprint import pformat
 
 NAME = 'lastrecorder'
 DOTDIR = os.path.join(os.path.expanduser('~'), '.%s' % NAME)
+LOGFILE = os.path.join(DOTDIR, '%s.log' % NAME)
 SOCKET_READ_SIZE = 512
 SOCKET_TIMEOUT = 30
 # Pretend to be Last.fm player
@@ -874,46 +876,47 @@ class GUI(object):
         except Exception, e:
             self.log.exception('loop: %s', e)
         finally:
-            self.init_record()
+            idle_add(self.init_record)
 
     def handle_radio(self):
         log = self.log
         url = self.station_url
         radio = self.radio_client
+        idle_add(self.update_status, 'Logging in ...')
         radio.handshake()
+        idle_add(self.update_status, 'Tuning to %s ...' % url)
+        try:
+            radio.adjust(url)
+        except InvalidURL, e:
+            idle_add(self.update_status, e)
+            return
+        except NoContentAvailable:
+            idle_add(self.update_status,
+                             'No content available for %s' % url)
+            return
+        except AdjustError, e:
+            idle_add(self.update_status,
+                             'Failed to tune to %s: %s' % (url, e))
+            return
+        except (httplib.HTTPException, urllib2.URLError, IOError,
+                socket.error), e:
+            msg = 'Failed to tune to %s: %s' % (url, e)
+            log.exception(msg)
+            idle_add(self.update_status, msg)
+            return
 
+        delay = BackoffDelay()
         while True:
-            self.update_status('Tuning to %s ...' % url)
+            idle_add(self.update_status, 'Requesting tracks ...')
             try:
-                radio.adjust(url)
-            except InvalidURL, e:
-                self.update_status(e)
-                break
-            except NoContentAvailable:
-                self.update_status('No content available for %s' % url)
-                break
-            except AdjustError, e:
-                self.update_status('Failed to tune to %s: %s' % (url, e))
-                break
-            except (httplib.HTTPException, urllib2.URLError, IOError,
-                    socket.error), e:
-                msg = 'Failed to tune to %s: %s' % (url, e)
-                log.exception(msg)
-                self.update_status(msg)
+                radio.xspf()
+            except urllib2.HTTPError, e:
+                if e.code == 503:
+                    delay.sleep()
+            else:
                 break
 
-            delay = BackoffDelay()
-            while True:
-                self.update_status('Requesting tracks ...')
-                try:
-                    radio.xspf()
-                except urllib2.HTTPError, e:
-                    if e.code == 503:
-                        delay.sleep()
-                else:
-                    break
-
-            radio.handle_tracks()
+        radio.handle_tracks()
 
     def check_falgs(self):
         if self.break_loop:
@@ -926,23 +929,23 @@ class GUI(object):
     def progress_cb(self, track, position, length):
         self.check_falgs()
         fraction = float(position) / float(length)
-        self.progress.set_fraction(fraction)
         percent = fraction * 100
         msg = '%s: %0.1f%%' % (track.name, percent)
-        self.progress.set_text(msg)
+        idle_add(self.progress.set_fraction, fraction)
+        idle_add(self.progress.set_text, msg)
 
     def read_cb(self):
         self.check_falgs()
 
     def track_start_cb(self, track):
-        self.progress.set_text(track.name)
-        self.update_status(track.name)
+        idle_add(self.progress.set_text, track.name)
+        idle_add(self.update_status, track.name)
 
     def track_end_cb(self, track):
-        self.update_status('')
+        idle_add(self.update_status, '')
 
     def track_skip_cb(self, track):
-        self.update_status('Skipped %s', track.name)
+        idle_add(self.update_status, 'Skipped %s', track.name)
 
     def on_window_destroy(self, widget, data=None):
         self.break_loop = True
@@ -982,6 +985,7 @@ class GUI(object):
         self.url_status_message()
 
     def init_record(self):
+        self.log.debug('init_record()')
         self.stop.hide()
         self.record.show()
         self.record.grab_focus()
@@ -1097,14 +1101,8 @@ def setup_logging(options):
     level = logging.INFO
     if options.debug:
         level = logging.DEBUG
-    logfile = os.path.join(DOTDIR, 'lastrecorder.log')
-    errfile = logfile
-    sys.stderr.flush()
-    stdin = open('/dev/null', 'r')
-    stderr = open(errfile, 'wa', 0)
-    os.dup2(stdin.fileno(), sys.stdin.fileno())
-    os.dup2(stderr.fileno(), sys.stderr.fileno())
-    handler = logging.handlers.RotatingFileHandler(logfile, 'a',
+    logfile = LOGFILE 
+    handler = logging.handlers.RotatingFileHandler(logfile, 'w',
                                                    10 * 1024 * 1024, 1)
     handler.setLevel(logging.DEBUG)
     format= '%(asctime)s %(name)s %(levelname)8s: %(message)s'
@@ -1123,6 +1121,9 @@ def progress_cb(track, position, length):
 
 
 def setup():
+    if not os.path.exists(DOTDIR):
+        os.makedirs(DOTDIR)
+
     config = Config()
     config.parse()
 
@@ -1137,8 +1138,6 @@ def setup():
         log.warn('mutagen library not found. Tagging disabled.')
     if not options.gui and not urls:
         parser.error('Please specify lastfm:// URL')
-    if not os.path.exists(DOTDIR):
-        os.makedirs(DOTDIR)
     if not os.path.exists(options.outdir):
         os.makedirs(options.outdir)
 
