@@ -420,10 +420,7 @@ class RadioClient(object):
 
     def handle_track(self, track):
         log = self.log
-        try:
-            self.call(self.track_start_cb, track)
-        except Exception, e:
-            log.exception(e)
+        self.call(self.track_start_cb, track)
         # Handle audio/mpeg stream
         prefix = '.%s.' % track.make_filename()
         fd, tmp = tempfile.mkstemp(dir=self.outdir, prefix=prefix)
@@ -472,7 +469,6 @@ class RadioClient(object):
         except urllib2.HTTPError, e:
             self.log.error('%s', e, exc_info=True)
             return
-        res.fp._sock.fp._sock.setblocking(False)
         data = None
         while data is None:
             try:
@@ -482,13 +478,7 @@ class RadioClient(object):
                 continue
             try:
                 data = res.fp.read(SOCKET_READ_SIZE)
-            except (socket.error, IOError), e:
-                err = errno.EAGAIN
-                if IS_WINDOWS:
-                    err = 10035
-                if e.args[0] != err:
-                    self.log.exception('skip_track: read: %s', e)
-            except OSError, e:
+            except (socket.error, IOError, OSError), e:
                 self.log.exception('skip_track: read: %s', e)
 
     def finish_track(self, track, fp, tmp):
@@ -547,7 +537,6 @@ class RadioClient(object):
         '''
         log = self.log
         res = self.urlopen(track['location'])
-        res.fp._sock.fp._sock.setblocking(False)
         try:
             length = self.get_content_length(res)
         except ValueError:
@@ -568,15 +557,10 @@ class RadioClient(object):
                 data = res.fp.read(SOCKET_READ_SIZE)
                 count += len(data)
                 fp.write(data)
-                self.call(self.progress_cb, track, count, length)
-            except (socket.error, IOError), e:
-                err = errno.EAGAIN
-                if IS_WINDOWS:
-                    err = 10035
-                if e.args[0] != err:
-                    log.exception(e)
-            except OSError, e:
+            except (socket.error, IOError, OSError), e:
                 log.exception('handle_stream: read: %s', e)
+            else:
+                self.call(self.progress_cb, track, count, length)
             if count >= length:
                 fp.flush()
                 break
@@ -733,6 +717,7 @@ class GUI(object):
         self.username = builder.get_object('username')
         self.password = builder.get_object('password')
         self.login = builder.get_object('login')
+        self.loginapply = self.builder.get_object('loginapply')
 
         self.station = builder.get_object('station')
         self.station_type = builder.get_object('stationtype')
@@ -740,12 +725,15 @@ class GUI(object):
         cell = gtk.CellRendererText()
         self.station_type.pack_start(cell)
         self.station_type.add_attribute(cell, 'text', 0)
+
         self.outdir = builder.get_object('outdir')
         self.outdir.set_action(gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER)
+
         strip_windows_incompat = builder.get_object('strip_windows_incompat')
         self.strip_windows_incompat = strip_windows_incompat
         self.strip_spaces = builder.get_object('strip_spaces')
         self.skip_existing = builder.get_object('skip_existing')
+
         self.loginsave = builder.get_object('loginsave')
         self.statusbar = builder.get_object('statusbar')
         self.context_id = self.statusbar.get_context_id('Station')
@@ -771,13 +759,15 @@ class GUI(object):
                                dict(name='save'))
 
         self.username.connect('changed', self.on_username_changed)
+        self.username.connect('key-press-event',
+                              self.on_username_key_press_event)
         self.password.connect('key-press-event',
                               self.on_password_key_press_event)
         self.station.connect('changed', self.on_station_changed)
         self.station_type.connect('changed', self.on_station_type_chanded)
+        self.station_type.connect('grab_focus', self.on_station_type_chanded)
 
-        loginapply = self.builder.get_object('loginapply')
-        loginapply.connect('clicked', self.on_loginapply_clicked)
+        self.loginapply.connect('clicked', self.on_loginapply_clicked)
 
         self.record.connect('clicked', self.on_record_clicked)
         self.stop.connect('clicked', self.on_stop_clicked)
@@ -800,7 +790,7 @@ class GUI(object):
 
     def update_status(self, message):
         message = str(message)
-        self.log.info('Status: %s', message)
+        self.log.debug('Status: %s', message)
         self.statusbar.push(self.context_id, message)
 
     @property
@@ -814,6 +804,27 @@ class GUI(object):
         if self.options.quote:
             url = quote_url(url)
         return url
+
+    def grab_default(self):
+        if not self.options.username or not self.options.passwordmd5:
+            self.loginapply.grab_default()
+        elif self.radio_thread is None:
+            self.record.grab_default()
+        else: 
+            self.stop.grab_default()
+        row = self.station_store[self.station_type.get_active()]
+        station_type = row[2]
+        arg_required = row[3]
+        if not arg_required: 
+            self.station.set_sensitive(False)
+            if self.radio_thread is None:
+                self.record.grab_focus()
+        else:
+            self.station.set_sensitive(True)
+            self.station.grab_focus()
+            if station_type == 'custom':
+                self.station.select_region(-1, -1)
+
 
     def init_view(self):
         options = self.options
@@ -831,6 +842,7 @@ class GUI(object):
             self.station_type.set_active_iter(iter)
         else:
             self.station_type.set_active(0)
+
         self.url_status_message()
 
         username = self.options.username
@@ -848,6 +860,7 @@ class GUI(object):
             self.password.grab_focus()
             return
         self.password.set_text('*' * 10)
+        self.grab_default()
 
     def update_password(self):
         if self.options.save:
@@ -872,51 +885,69 @@ class GUI(object):
         try:
             self.handle_radio()
         except self.LoopBreak:
-            return
+            pass
+        except HandshakeError:
+            idle_add(self.login_error)
         except Exception, e:
             self.log.exception('loop: %s', e)
-        finally:
+        else:
             idle_add(self.init_record)
 
     def handle_radio(self):
         log = self.log
         url = self.station_url
         radio = self.radio_client
+
         idle_add(self.update_status, 'Logging in ...')
         radio.handshake()
-        idle_add(self.update_status, 'Tuning to %s ...' % url)
-        try:
-            radio.adjust(url)
-        except InvalidURL, e:
-            idle_add(self.update_status, e)
-            return
-        except NoContentAvailable:
-            idle_add(self.update_status,
-                             'No content available for %s' % url)
-            return
-        except AdjustError, e:
-            idle_add(self.update_status,
-                             'Failed to tune to %s: %s' % (url, e))
-            return
-        except (httplib.HTTPException, urllib2.URLError, IOError,
-                socket.error), e:
-            msg = 'Failed to tune to %s: %s' % (url, e)
-            log.exception(msg)
-            idle_add(self.update_status, msg)
-            return
 
-        delay = BackoffDelay()
         while True:
-            idle_add(self.update_status, 'Requesting tracks ...')
+            idle_add(self.update_status, 'Tuning to %s ...' % url)
             try:
-                radio.xspf()
-            except urllib2.HTTPError, e:
-                if e.code == 503:
-                    delay.sleep()
-            else:
-                break
+                radio.adjust(url)
+            except InvalidURL, e:
+                idle_add(self.update_status, e)
+                idle_add(self.station.grab_focus)
+                return
+            except NoContentAvailable:
+                idle_add(self.update_status,
+                         'No content available for %s' % url)
+                idle_add(self.station_type.grab_focus)
+                return
+            except AdjustError, e:
+                idle_add(self.update_status,
+                         'Failed to tune to %s: %s' % (url, e))
+                idle_add(self.station_type.grab_focus)
+                return
+            except (httplib.HTTPException, urllib2.URLError, IOError,
+                    socket.error), e:
+                msg = 'Failed to tune to %s: %s' % (url, e)
+                log.exception(msg)
+                idle_add(self.update_status, msg)
+                return
+            finally:
+                idle_add(self.grab_default)
 
-        radio.handle_tracks()
+            delay = BackoffDelay()
+            while True:
+                idle_add(self.update_status, 'Requesting tracks ...')
+                try:
+                    radio.xspf()
+                except urllib2.HTTPError, e:
+                    if e.code == 503:
+                        delay.sleep()
+                else:
+                    break
+
+            radio.handle_tracks()
+
+    def login_error(self):
+        self.update_status('Login error.'
+                           ' Please check your username and password.')
+        self.options.passwordmd5 = None
+        self.grab_default()
+        self.login.set_expanded(True)
+        self.password.grab_focus()
 
     def check_falgs(self):
         if self.break_loop:
@@ -938,14 +969,18 @@ class GUI(object):
         self.check_falgs()
 
     def track_start_cb(self, track):
+        self.check_falgs()
         idle_add(self.progress.set_text, track.name)
         idle_add(self.update_status, track.name)
 
     def track_end_cb(self, track):
+        self.check_falgs()
+        idle_add(self.init_progress)
         idle_add(self.update_status, '')
 
     def track_skip_cb(self, track):
-        idle_add(self.update_status, 'Skipped %s', track.name)
+        self.check_falgs()
+        idle_add(self.update_status, 'Skipped %s' % track.name)
 
     def on_window_destroy(self, widget, data=None):
         self.break_loop = True
@@ -957,11 +992,12 @@ class GUI(object):
         gtk.main_quit()
 
     def on_record_clicked(self, widget, data=None):
-        assert self.options.username
-        assert self.options.passwordmd5
+        self.record.set_sensitive(False)
+        self.stop.set_sensitive(True)
         self.record.hide()
         self.stop.show()
         self.stop.grab_focus()
+        self.grab_default()
         for name in ['username', 'passwordmd5', 'outdir', 'skip_existing',
                      'strip_windows_incompat', 'strip_spaces']:
             value = getattr(self.options, name)
@@ -985,8 +1021,9 @@ class GUI(object):
         self.url_status_message()
 
     def init_record(self):
-        self.log.debug('init_record()')
         self.stop.hide()
+        self.stop.set_sensitive(False)
+        self.record.set_sensitive(True)
         self.record.show()
         self.record.grab_focus()
         self.init_progress()
@@ -994,13 +1031,20 @@ class GUI(object):
     def on_next_clicked(self, widget, data=None):
         if self.radio_thread is not None and self.radio_thread.isAlive():
             self.skip_track = True
+            self.init_progress()
 
     def on_username_changed(self, widget, data=None):
         self.options.username = widget.get_text()
 
+    def on_username_key_press_event(self, widget, event, data=None):
+        if event.type != gtk.gdk.KEY_PRESS:
+            return
+        if event.keyval == gtk.keysyms.Return:
+            self.password.grab_focus()
+
     def on_password_key_press_event(self, widget, event, data=None):
         self.options.passwordmd5 = md5(widget.get_text()).hexdigest()
-        self.log.debug('passwordmd5: %s', self.options.passwordmd5)
+        self.loginapply.grab_default()
 
     def on_outdir_current_folder_changed(self, widget, data=None):
         self.options.outdir = widget.get_filename()
@@ -1017,8 +1061,19 @@ class GUI(object):
             self.station.set_text('lastfm://')
         else:
             self.station.set_text('')
-        self.station.grab_focus()
+
+        # Doesn't need argument
+        if not row[3]:
+            self.station.set_sensitive(False)
+            self.record.grab_focus()
+        else:
+            self.station.set_sensitive(True)
+            self.station.grab_focus()
+            if station_type == 'custom':
+                self.station.select_region(-1, -1)
+
         self.url_status_message()
+        self.grab_default()
 
     def on_option_toggled(self, widget, data):
         value = widget.get_active()
@@ -1031,7 +1086,8 @@ class GUI(object):
         self.update_password()
         self.write_config()
         self.login.set_expanded(False)
-        #self.station.grab_focus()
+        self.station_type.grab_focus()
+        self.grab_default()
 
 
 def setup_urllib2():
@@ -1101,16 +1157,23 @@ def setup_logging(options):
     level = logging.INFO
     if options.debug:
         level = logging.DEBUG
-    logfile = LOGFILE 
-    handler = logging.handlers.RotatingFileHandler(logfile, 'w',
+    if os.path.exists(LOGFILE):
+        os.unlink(LOGFILE)
+    handler = logging.handlers.RotatingFileHandler(LOGFILE, 'w',
                                                    10 * 1024 * 1024, 1)
     handler.setLevel(logging.DEBUG)
-    format= '%(asctime)s %(name)s %(levelname)8s: %(message)s'
+    format= '%(asctime)s %(levelname)8s %(name)s: %(message)s'
     formatter = logging.Formatter(format)
     handler.setFormatter(formatter)
     root = logging.getLogger()
     root.setLevel(level)
     root.addHandler(handler)
+    # Console logger
+    if not IS_WINDOWS:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
 
 
 def progress_cb(track, position, length):
@@ -1186,38 +1249,41 @@ def gui_main(config=None, options=None, urls=None):
 def main():
     config, options, urls = setup()
     log = logging.getLogger('main')
-
-    if options.gui:
-        return gui_main(config, options, urls)
-
-    username, passwordmd5 = get_credentials(options, config)
-
-    if options.save:
-        config.username = username
-        config.passwordmd5 = passwordmd5
-        try:
-            config.write()
-        except (IOError, OSError), e:
-            log.exception('Error saving config file: %s', e)
-
-    radio_client = RadioClient(username, passwordmd5, options.outdir,
-                               options.strip_windows_incompat,
-                               options.strip_spaces, options.skip_existing,
-                               progress_cb)
     try:
-        radio_client.loop(urls)
-    except HandshakeError, e:
-        log.error('%s', e)
+        if options.gui:
+            return gui_main(config, options, urls)
+
+        username, passwordmd5 = get_credentials(options, config)
+
+        if options.save:
+            config.username = username
+            config.passwordmd5 = passwordmd5
+            try:
+                config.write()
+            except (IOError, OSError), e:
+                log.exception('Error saving config file: %s', e)
+
+        radio_client = RadioClient(username, passwordmd5, options.outdir,
+                                   options.strip_windows_incompat,
+                                   options.strip_spaces, options.skip_existing,
+                                   progress_cb)
+        try:
+            radio_client.loop(urls)
+        except HandshakeError, e:
+            log.error('%s', e)
+            return 1
+        except (IOError, socket.error, httplib.HTTPException), e:
+            log.exception('I/O or HTTP error: %s', e)
+            return 1
+        except ValueError, e:
+            log.exception('Unexpected error: %s', e)
+            return 1
+        except KeyboardInterrupt:
+            log.info('Interrupted. Exiting.')
+            return
+    except Exception, e:
+        log.exception(e)
         return 1
-    except (IOError, socket.error, httplib.HTTPException), e:
-        log.exception('I/O or HTTP error: %s', e)
-        return 1
-    except ValueError, e:
-        log.exception('Unexpected error: %s', e)
-        return 1
-    except KeyboardInterrupt:
-        log.info('Interrupted. Exiting.')
-        return
 
 if __name__ == '__main__':
     sys.exit(main())

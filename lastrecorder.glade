@@ -120,10 +120,8 @@
                       <object class="GtkEntry" id="station">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="max_length">30</property>
                         <property name="invisible_char">&#x25CF;</property>
                         <property name="activates_default">True</property>
-                        <property name="width_chars">30</property>
                       </object>
                       <packing>
                         <property name="padding">4</property>
@@ -378,49 +376,59 @@
       <column type="gchararray"/>
       <!-- column-name template -->
       <column type="gchararray"/>
-      <!-- column-name id -->
+      <!-- column-name type -->
       <column type="gchararray"/>
+      <!-- column-name arg_required -->
+      <column type="gboolean"/>
     </columns>
     <data>
       <row>
         <col id="0" translatable="yes">Tag</col>
         <col id="1" translatable="yes">lastfm://globaltags/%(station)s</col>
         <col id="2" translatable="yes">tag</col>
+        <col id="3">True</col>
       </row>
       <row>
         <col id="0" translatable="yes">Artist</col>
         <col id="1" translatable="yes">lastfm://artist/%(station)s</col>
         <col id="2" translatable="yes">artist</col>
+        <col id="3">True</col>
       </row>
       <row>
         <col id="0" translatable="yes">My Tag</col>
         <col id="1" translatable="yes">lastfm://usertags/%(username)s/%(station)s</col>
         <col id="2" translatable="yes">user_tag</col>
+        <col id="3">True</col>
       </row>
       <row>
         <col id="0" translatable="yes">My Radio</col>
         <col id="1" translatable="yes">lastfm://user/%(username)s/personal</col>
         <col id="2" translatable="yes">user</col>
+        <col id="3">False</col>
       </row>
       <row>
         <col id="0" translatable="yes">My Loved Tracks</col>
         <col id="1" translatable="yes">lastfm://user/%(username)s/loved</col>
         <col id="2" translatable="yes">user_loved</col>
+        <col id="3">False</col>
       </row>
       <row>
         <col id="0" translatable="yes">My Neighbours</col>
         <col id="1" translatable="yes">lastfm://user/%(username)s/neighbours</col>
         <col id="2" translatable="yes">user_neighbours</col>
+        <col id="3">False</col>
       </row>
       <row>
         <col id="0" translatable="yes">My Recommendations</col>
         <col id="1" translatable="yes">lastfm://user/%(username)s/recommended</col>
         <col id="2" translatable="yes">user_recommended</col>
+        <col id="3">False</col>
       </row>
       <row>
         <col id="0" translatable="yes">Custom URL</col>
         <col id="1" translatable="yes">%(station)s</col>
         <col id="2" translatable="yes">custom</col>
+        <col id="3">True</col>
       </row>
     </data>
   </object>
