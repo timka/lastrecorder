@@ -32,49 +32,8 @@
               </packing>
             </child>
             <child>
-              <object class="GtkHBox" id="hbox3">
+              <object class="GtkHBox" id="buttons">
                 <property name="visible">True</property>
-                <child>
-                  <object class="GtkButton" id="record">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="can_default">True</property>
-                    <property name="has_default">True</property>
-                    <property name="receives_default">True</property>
-                    <child>
-                      <object class="GtkImage" id="image1">
-                        <property name="visible">True</property>
-                        <property name="stock">gtk-media-record</property>
-                      </object>
-                    </child>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">False</property>
-                    <property name="padding">4</property>
-                    <property name="position">0</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkButton" id="stop">
-                    <property name="can_focus">True</property>
-                    <property name="can_default">True</property>
-                    <property name="has_default">True</property>
-                    <property name="receives_default">True</property>
-                    <child>
-                      <object class="GtkImage" id="image2">
-                        <property name="visible">True</property>
-                        <property name="stock">gtk-media-stop</property>
-                      </object>
-                    </child>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">False</property>
-                    <property name="padding">4</property>
-                    <property name="position">1</property>
-                  </packing>
-                </child>
                 <child>
                   <object class="GtkButton" id="next">
                     <property name="visible">True</property>
@@ -431,5 +390,30 @@
         <col id="3">True</col>
       </row>
     </data>
+  </object>
+  <object class="GtkButton" id="record">
+    <property name="visible">True</property>
+    <property name="can_focus">True</property>
+    <property name="can_default">True</property>
+    <property name="has_default">True</property>
+    <property name="receives_default">True</property>
+    <child>
+      <object class="GtkImage" id="image1">
+        <property name="visible">True</property>
+        <property name="stock">gtk-media-record</property>
+      </object>
+    </child>
+  </object>
+  <object class="GtkButton" id="stop">
+    <property name="can_focus">True</property>
+    <property name="can_default">True</property>
+    <property name="has_default">True</property>
+    <property name="receives_default">True</property>
+    <child>
+      <object class="GtkImage" id="image2">
+        <property name="visible">True</property>
+        <property name="stock">gtk-media-stop</property>
+      </object>
+    </child>
   </object>
 </interface>

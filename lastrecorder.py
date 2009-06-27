@@ -689,6 +689,29 @@ class Config(object):
 class SkipTrack(BaseException):
     pass
 
+if pygtk:
+    class RecordStopButton(gtk.Button):
+        def __init__(self, *args, **kw):
+            super(RecordStopButton, self).__init__(*args, **kw)
+            self.set_flags(gtk.CAN_DEFAULT)
+            self.record = gtk.Image()
+            size = gtk.ICON_SIZE_BUTTON
+            self.record.set_from_stock(gtk.STOCK_MEDIA_RECORD, size)
+            self.stop = gtk.Image()
+            self.stop.set_from_stock(gtk.STOCK_MEDIA_STOP, size)
+            self.set_image(self.record)
+
+        def toggle(self):
+            if self.is_record:
+                self.set_image(self.stop)
+            else:
+                self.set_image(self.record)
+
+        @property
+        def is_record(self):
+            return self.get_image() == self.record
+
+
 class GUI(object):
     class LoopBreak(BaseException):
         pass
@@ -739,8 +762,13 @@ class GUI(object):
         self.context_id = self.statusbar.get_context_id('Station')
         self.progress = builder.get_object('progress')
         self.init_progress()
-        self.record = self.builder.get_object('record')
-        self.stop = self.builder.get_object('stop')
+
+        self.next = builder.get_object('next')
+        self.record_stop = RecordStopButton()
+        self.record_stop.show()
+        buttons = self.builder.get_object('buttons')
+        buttons.pack_start(self.record_stop, expand=False, fill=False)
+        buttons.reorder_child(self.next, 1)
 
         self.init_view()
         self.connect_signals()
@@ -769,11 +797,9 @@ class GUI(object):
 
         self.loginapply.connect('clicked', self.on_loginapply_clicked)
 
-        self.record.connect('clicked', self.on_record_clicked)
-        self.stop.connect('clicked', self.on_stop_clicked)
+        self.record_stop.connect('clicked', self.on_record_stop_clicked)
 
-        next = self.builder.get_object('next')
-        next.connect('clicked', self.on_next_clicked)
+        self.next.connect('clicked', self.on_next_clicked)
 
         self.window.connect('destroy', self.on_window_destroy)
 
@@ -808,20 +834,22 @@ class GUI(object):
     def grab_default(self):
         if not self.options.username or not self.options.passwordmd5:
             self.loginapply.grab_default()
-        elif self.radio_thread is None:
-            self.record.grab_default()
-        else: 
-            self.stop.grab_default()
+            self.log.debug('grab_default: loginapply')
+        else:
+            self.record_stop.grab_default()
+            self.log.debug('grab_default: record_stop')
         row = self.station_store[self.station_type.get_active()]
         station_type = row[2]
         arg_required = row[3]
         if not arg_required: 
             self.station.set_sensitive(False)
-            if self.radio_thread is None:
-                self.record.grab_focus()
+            self.station.set_text('')
+            self.record_stop.grab_focus()
+            self.log.debug('grab_default: focus: record_stop')
         else:
             self.station.set_sensitive(True)
             self.station.grab_focus()
+            self.log.debug('grab_default: focus: station')
             if station_type == 'custom':
                 self.station.select_region(-1, -1)
 
@@ -885,8 +913,9 @@ class GUI(object):
         try:
             self.handle_radio()
         except self.LoopBreak:
-            pass
+            idle_add(self.update_status, 'Stopped')
         except HandshakeError:
+            idle_add(self.init_record)
             idle_add(self.login_error)
         except Exception, e:
             self.log.exception('loop: %s', e)
@@ -900,8 +929,13 @@ class GUI(object):
 
         idle_add(self.update_status, 'Logging in ...')
         radio.handshake()
+        idle_add(self.update_status, '')
+        if self.break_loop:
+            raise self.LoopBreak
 
         while True:
+            if self.break_loop:
+                raise self.LoopBreak
             idle_add(self.update_status, 'Tuning to %s ...' % url)
             try:
                 radio.adjust(url)
@@ -925,11 +959,16 @@ class GUI(object):
                 log.exception(msg)
                 idle_add(self.update_status, msg)
                 return
+            else:
+                idle_add(self.update_status, '')
             finally:
                 idle_add(self.grab_default)
 
             delay = BackoffDelay()
             while True:
+                if self.break_loop:
+                    raise self.LoopBreak
+
                 idle_add(self.update_status, 'Requesting tracks ...')
                 try:
                     radio.xspf()
@@ -937,6 +976,7 @@ class GUI(object):
                     if e.code == 503:
                         delay.sleep()
                 else:
+                    idle_add(self.update_status, '')
                     break
 
             radio.handle_tracks()
@@ -991,41 +1031,35 @@ class GUI(object):
         self.write_config()
         gtk.main_quit()
 
-    def on_record_clicked(self, widget, data=None):
-        self.record.set_sensitive(False)
-        self.stop.set_sensitive(True)
-        self.record.hide()
-        self.stop.show()
-        self.stop.grab_focus()
-        self.grab_default()
-        for name in ['username', 'passwordmd5', 'outdir', 'skip_existing',
-                     'strip_windows_incompat', 'strip_spaces']:
-            value = getattr(self.options, name)
-            setattr(self.radio_client, name, value)
-        self.radio_client.progress_cb = self.progress_cb
-        self.radio_client.track_start_cb = self.track_start_cb
-        self.radio_client.track_end_cb = self.track_end_cb
-        self.radio_client.track_skip_cb = self.track_skip_cb
-        self.radio_client.read_cb = self.read_cb
-        self.break_loop = False
-        self.skip_track = False
-        self.init_radio_thread()
-        self.radio_thread.start()
+    def on_record_stop_clicked(self, widget, data=None):
+        record_stop = widget
+        if record_stop.is_record:
+            for name in ['username', 'passwordmd5', 'outdir', 'skip_existing',
+                         'strip_windows_incompat', 'strip_spaces']:
+                value = getattr(self.options, name)
+                setattr(self.radio_client, name, value)
+            self.radio_client.progress_cb = self.progress_cb
+            self.radio_client.track_start_cb = self.track_start_cb
+            self.radio_client.track_end_cb = self.track_end_cb
+            self.radio_client.track_skip_cb = self.track_skip_cb
+            self.radio_client.read_cb = self.read_cb
+            self.break_loop = False
+            self.skip_track = False
+            self.init_radio_thread()
+            self.radio_thread.start()
+        else:
+            self.init_record()
+            self.break_loop = True
+            if self.radio_thread is not None:
+                self.radio_thread.join()
+            self.radio_thread = None
+            self.url_status_message()
 
-    def on_stop_clicked(self, widget, data=None):
-        self.init_record()
-        self.break_loop = True
-        if self.radio_thread is not None:
-            self.radio_thread.join()
-        self.radio_thread = None
-        self.url_status_message()
+        record_stop.toggle()
 
     def init_record(self):
-        self.stop.hide()
-        self.stop.set_sensitive(False)
-        self.record.set_sensitive(True)
-        self.record.show()
-        self.record.grab_focus()
+        self.record_stop.show()
+        self.record_stop.grab_focus()
         self.init_progress()
 
     def on_next_clicked(self, widget, data=None):
@@ -1056,21 +1090,13 @@ class GUI(object):
     def on_station_type_chanded(self, widget, data=None):
         row = self.station_store[widget.get_active()]
         station_type = row[2]
+        arg_required = row[3]
         self.config.station_type = station_type 
         if station_type == 'custom':
             self.station.set_text('lastfm://')
-        else:
+            self.station.select_region(-1, -1)
+        elif not self.station.get_text:
             self.station.set_text('')
-
-        # Doesn't need argument
-        if not row[3]:
-            self.station.set_sensitive(False)
-            self.record.grab_focus()
-        else:
-            self.station.set_sensitive(True)
-            self.station.grab_focus()
-            if station_type == 'custom':
-                self.station.select_region(-1, -1)
 
         self.url_status_message()
         self.grab_default()
