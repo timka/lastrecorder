@@ -432,11 +432,9 @@ class RadioClient(object):
         try:
             self.handle_stream(track, fp)
         except urllib2.HTTPError, e:
-            if e.code == 403:
-                log.error(e)
-                log.info('Skipping %s', msg)
-            else:
-                raise e
+            log.exception(e)
+            log.info('Skipping %s', msg)
+            raise SkipTrack
         except exceptions, e:
             log.exception(e)
         else:
@@ -767,7 +765,8 @@ class GUI(object):
         self.record_stop = RecordStopButton()
         self.record_stop.show()
         buttons = self.builder.get_object('buttons')
-        buttons.pack_start(self.record_stop, expand=False, fill=False)
+        buttons.pack_start(self.record_stop, expand=False, fill=False,
+                           padding=4)
         buttons.reorder_child(self.next, 1)
 
         self.init_view()
@@ -916,6 +915,7 @@ class GUI(object):
             idle_add(self.update_status, 'Stopped')
         except HandshakeError:
             idle_add(self.init_record)
+            idle_add(self.record_stop.toggle)
             idle_add(self.login_error)
         except Exception, e:
             self.log.exception('loop: %s', e)
@@ -1071,6 +1071,7 @@ class GUI(object):
         self.options.username = widget.get_text()
 
     def on_username_key_press_event(self, widget, event, data=None):
+        # TODO: Doesn't work on Windows
         if event.type != gtk.gdk.KEY_PRESS:
             return
         if event.keyval == gtk.keysyms.Return:
