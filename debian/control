@@ -2,13 +2,13 @@ Source: lastrecorder
 Section: sound
 Priority: extra
 Maintainer: Timur Izhbulatov <timochka@gmail.com>
-Build-Depends: cdbs, debhelper (>= 7)
+Build-Depends: cdbs, debhelper (>= 7), python-setuptools
 Standards-Version: 3.8.0
 Homepage: http://timka.org/lastrecorder/
 
 Package: lastrecorder
 Architecture: any
-Depends: ${python:Depends}
+Depends: ${python:Depends}, python-setuptools
 Suggests: python-gtk2, python-mutagen
 XB-Python-Version: ${python:Versions}
 Description: Last.fm audio stream recorder
