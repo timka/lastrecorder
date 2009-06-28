@@ -391,29 +391,4 @@
       </row>
     </data>
   </object>
-  <object class="GtkButton" id="record">
-    <property name="visible">True</property>
-    <property name="can_focus">True</property>
-    <property name="can_default">True</property>
-    <property name="has_default">True</property>
-    <property name="receives_default">True</property>
-    <child>
-      <object class="GtkImage" id="image1">
-        <property name="visible">True</property>
-        <property name="stock">gtk-media-record</property>
-      </object>
-    </child>
-  </object>
-  <object class="GtkButton" id="stop">
-    <property name="can_focus">True</property>
-    <property name="can_default">True</property>
-    <property name="has_default">True</property>
-    <property name="receives_default">True</property>
-    <child>
-      <object class="GtkImage" id="image2">
-        <property name="visible">True</property>
-        <property name="stock">gtk-media-stop</property>
-      </object>
-    </child>
-  </object>
 </interface>

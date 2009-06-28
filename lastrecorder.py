@@ -78,6 +78,7 @@ from pprint import pformat
 
 NAME = 'lastrecorder'
 DOTDIR = os.path.join(os.path.expanduser('~'), '.%s' % NAME)
+MUSICDIR = os.path.join(DOTDIR, 'music')
 LOGFILE = os.path.join(DOTDIR, '%s.log' % NAME)
 SOCKET_READ_SIZE = 512
 SOCKET_TIMEOUT = 30
@@ -86,6 +87,9 @@ VERSION = '1.5.1.31879'
 USER_AGENT = 'User-Agent: Last.fm Client %s (X11)' % VERSION
 
 IS_WINDOWS = sys.platform.lower().startswith('win')
+DEFAULTS = dict(save=True, debug=False, quote=True, skip_existing=True,
+                strip_windows_incompat=True, strip_spaces=True,
+                outdir=MUSICDIR, gui=True)
 
 
 class Error(Exception):
@@ -730,11 +734,21 @@ class GUI(object):
         filename = '%s.glade' % NAME
         # Check if this is pyinstaller --onefile
         moduledir = os.environ.get('_MEIPASS2', os.path.dirname(sys.argv[0]))
-        path = os.path.join(moduledir, filename)
-        builder.add_from_file(path)
+        gladepath = os.path.join(moduledir, filename)
+        if not os.path.exists(gladepath):
+            moduledir = os.path.join(sys.prefix, 'share', NAME)
+        gladepath = os.path.join(moduledir, filename)
+        builder.add_from_file(gladepath)
 
-        #self.icon = gtk.status_icon_new_from_stock(gtk.STOCK_MEDIA_STOP)
         self.window = builder.get_object('mainwindow')
+        if not IS_WINDOWS:
+            icondir = os.path.join(sys.prefix, 'share', 'pixmaps')
+            iconpath = os.path.join(icondir, '%s.png' % NAME)
+            if not os.path.exists(iconpath):
+                iconpath = os.path.join(moduledir, '%s.png' % NAME)
+            #self.icon = gtk.status_icon_new_from_file(iconpath)
+            self.window.set_icon_from_file(iconpath)
+
         self.username = builder.get_object('username')
         self.password = builder.get_object('password')
         self.login = builder.get_object('login')
@@ -1131,13 +1145,9 @@ def quote_url(url):
     return url[:i] + q(url[i:])
 
 
-def parse_args(config):
+def parse_args(config, defaults):
     parser = OptionParser(usage=__doc__.rstrip())
 
-    musicdir = os.path.join(DOTDIR, 'music')
-    defaults = dict(save=True, debug=False, quote=True, skip_existing=True,
-                    strip_windows_incompat=True, strip_spaces=True,
-                    outdir=musicdir, gui=True)
     defaults.update((k,v) for k, v in config if v is not None)
     parser.set_defaults(**defaults)
 
@@ -1210,19 +1220,22 @@ def progress_cb(track, position, length):
     sys.stderr.write(msg)
 
 
-def setup():
+def setup(defaults):
+    reload(sys).setdefaultencoding('utf-8')
+
     if not os.path.exists(DOTDIR):
         os.makedirs(DOTDIR)
 
     config = Config()
     config.parse()
 
-    parser, options, urls = parse_args(config)
+    parser, options, urls = parse_args(config, defaults)
     setup_logging(options)
     log = logging.getLogger('setup')
 
     if options.gui and not pygtk:
         options.gui = False
+        log = logging.getLogger('main')
         log.warn('pygtk library not found. GUI disabled.')
     if not mutagen:
         log.warn('mutagen library not found. Tagging disabled.')
@@ -1267,14 +1280,23 @@ def get_credentials(options, config):
 
 def gui_main(config=None, options=None, urls=None):
     if config is None:
-        config, options, urls = setup()
-        options.gui = True
+        DEFAULTS['gui'] = True
+        config, options, urls = setup(DEFAULTS.copy())
     gui = GUI(config, options, urls)
     gtk.main()
 
 
-def main():
-    config, options, urls = setup()
+def cli_main(config=None, options=None, urls=None):
+    if config is None:
+        DEFAULTS['gui'] = False
+        config, options, urls = setup(DEFAULTS.copy())
+    return main(config, options, urls)
+
+
+def main(config=None, options=None, urls=None):
+    if config is None:
+        config, options, urls = setup(DEFAULTS.copy())
+
     log = logging.getLogger('main')
     try:
         if options.gui:

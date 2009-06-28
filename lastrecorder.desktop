@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Last Recorder
+GenericName=Last.fm Audio Stream Recorder
+Comment=Save Last.fm audio streams as mp3 files
+Exec=lastrecorder
+Terminal=false
+Type=Application
+Icon=lastrecorder.png
+Categories=Application;AudioVideo;GTK
