@@ -151,7 +151,7 @@ class Track(dict):
         '''Strip Windows-incompatible characters.
         '''
         s = substitute
-        string = ''.join([ ((c in '\:*?;"<>|' and s) or c) for c in string ])
+        string = ''.join([ ((c in '\/:*?;"<>|' and s) or c) for c in string ])
         # Remove trailnig dots and spaces
         # http://mail.python.org/pipermail/python-list/2005-July/330549.html
         if s.endswith('.') or s.endswith(' '):
@@ -413,6 +413,10 @@ class RadioClient(object):
                 self.log.info('Interrupted. Skipping track.')
                 time.sleep(0.2)
             except SkipTrack:
+                self.call(self.track_skip_cb, track)
+            except Exception, e:
+                self.log.exception('handle_tracks: %s', e)
+                self.log.error('Skipping track.')
                 self.call(self.track_skip_cb, track)
 
     def call(self, callback, *args, **kw):
