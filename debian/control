@@ -9,7 +9,7 @@ Homepage: http://timka.org/lastrecorder/
 Package: lastrecorder
 Architecture: any
 Depends: ${python:Depends}, python-setuptools
-Suggests: python-gtk2, python-mutagen
+Recommends: python-gtk2, python-mutagen
 XB-Python-Version: ${python:Versions}
 Description: Last.fm audio stream recorder
  Last Recorder is a small program that can save Last.fm audio streams as mp3 files.
