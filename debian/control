@@ -7,7 +7,7 @@ Standards-Version: 3.8.0
 Homepage: http://timka.org/lastrecorder/
 
 Package: lastrecorder
-Architecture: any
+Architecture: all
 Depends: ${python:Depends}, python-pkg-resources, ${misc:Depends}
 Recommends: python-gtk2, python-mutagen
 XB-Python-Version: ${python:Versions}
