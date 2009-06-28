@@ -1,0 +1,2 @@
+?package(lastrecorder):needs="X11" section="Applications/Sound" \
+ title="Last Recorder" command="/usr/bin/lastrecorder"
