@@ -8,7 +8,7 @@ Homepage: http://timka.org/lastrecorder/
 
 Package: lastrecorder
 Architecture: any
-Depends: ${python:Depends}, python-setuptools
+Depends: ${python:Depends}, python-pgk-resources
 Recommends: python-gtk2, python-mutagen
 XB-Python-Version: ${python:Versions}
 Description: Last.fm audio stream recorder
