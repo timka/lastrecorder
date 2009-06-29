@@ -43,10 +43,11 @@ from lastrecorder import util
 from lastrecorder.radio import RadioClient, HandshakeError, setup_urllib2
 from lastrecorder.config import Config
 from lastrecorder import LOGFILE, IS_WINDOWS, DOTDIR, DEFAULTS
+from lastrecorder import release
 
 
 def parse_args(config, defaults):
-    parser = OptionParser(usage=__doc__.rstrip())
+    parser = OptionParser(usage=__doc__.rstrip(), version=release.version)
 
     defaults.update((k, v) for k, v in config if v is not None)
     parser.set_defaults(**defaults)
@@ -79,6 +80,7 @@ def parse_args(config, defaults):
     parser.add_option('--no-strip-spaces', '-s', dest='strip_spaces',
                       action='store_false',
                       help="don't replace space characters with underscores")
+
     options, args = parser.parse_args()
 
     # Quote URLs

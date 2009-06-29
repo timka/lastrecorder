@@ -36,6 +36,7 @@ from lastrecorder.exceptions import SkipTrack
 from lastrecorder.radio import (RadioClient, HandshakeError, InvalidURL,
                                 NoContentAvailable, AdjustError)
 from lastrecorder import util
+from lastrecorder import release
 
 class RecordStopButton(gtk.Button):
     def __init__(self, *args, **kw):
@@ -87,6 +88,7 @@ class GUI(object):
         builder.add_from_file(gladepath)
 
         self.window = builder.get_object('mainwindow')
+        self.window.set_title('Last Recorder %s' % release.version)
         if not IS_WINDOWS:
             icondir = os.path.join(sys.prefix, 'share', 'pixmaps')
             iconpath = os.path.join(icondir, '%s.png' % NAME)

@@ -17,10 +17,11 @@ from setuptools import setup, find_packages
 
 name = 'LastRecorder'
 module = name.lower()
+execfile(os.path.join(module, 'release.py'))
 
 setup(
     name = name, 
-    version = "0.5",
+    version = version,
     packages = find_packages(),
     entry_points = dict(
         console_scripts = [

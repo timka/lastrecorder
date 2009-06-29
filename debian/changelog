@@ -1,8 +1,11 @@
 lastrecorder (0.6) jaunty; urgency=low
 
-  * Modularized source 
+  * Modularized code
+  * Fixed config handling with empty credentials
+  * Fixed getpass usage
+  * Added version information
 
- -- Timur Izhbulatov <timochka@gmail.com>  Mon, 29 Jun 2009 04:01:51 +0400
+ -- Timur Izhbulatov <timochka@gmail.com>  Tue, 30 Jun 2009 02:52:00 +0400
 
 lastrecorder (0.5) jaunty; urgency=low
 
