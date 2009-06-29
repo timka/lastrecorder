@@ -32,12 +32,12 @@ Examples:
 import os
 import sys
 import socket
+import getpass
 import httplib
 import logging
 import logging.handlers
 
 from optparse import OptionParser
-from getpass import getpass
 
 from lastrecorder import util
 from lastrecorder.radio import RadioClient, HandshakeError, setup_urllib2

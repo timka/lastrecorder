@@ -250,8 +250,8 @@ class GUI(object):
         self.grab_default()
 
     def update_password(self):
-        if self.options.save:
-            self.config.passwordmd5 = self.options.passwordmd5 
+        if self.options.save and self.options.passwordmd5:
+            self.config.passwordmd5 = self.options.passwordmd5
         else:
             self.config.clear_password()
 
@@ -259,7 +259,14 @@ class GUI(object):
         self.log.debug('Options: %s', vars(self.options))
         for field in ['skip_existing', 'strip_windows_incompat',
                       'strip_spaces', 'save', 'outdir', 'username']:
-            setattr(self.config, field, getattr(self.options, field))
+            value = getattr(self.options, field)
+            if value is None:
+                try:
+                    del self.config.field
+                except AttributeError:
+                    pass
+            else:
+                setattr(self.config, field, value)
         self.log.debug('Updated config: %s', dict(self.config))
 
     def write_config(self):
