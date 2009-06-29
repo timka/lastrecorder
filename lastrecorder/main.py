@@ -1,3 +1,34 @@
+# -*- coding: utf-8 -*-
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+'''
+  %prog [options] URL [URL [...]]
+  OR
+  %prog --help
+
+Features:
+  * <artist>/<album>/<title> file naming scheme
+  * Automatic ID3 tags
+  * Skipping previously recorded tracks (optional)
+  * Stripping Windows-incompatible characters and/or spaces from paths
+    (optional)
+  * lastfm:// URL quoting (optional)
+
+Examples:
+  %prog lastfm://usertags/liago0sh/positive
+  %prog -s "lastfm://usertags/liago0sh/heavy electro" -d
+'''
 import os
 import sys
 import socket
