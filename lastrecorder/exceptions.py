@@ -1,0 +1,2 @@
+class SkipTrack(BaseException):
+    pass

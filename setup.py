@@ -1,5 +1,5 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 name = 'LastRecorder'
 module = name.lower()
@@ -7,13 +7,13 @@ module = name.lower()
 setup(
     name = name, 
     version = "0.5",
-    py_modules = [module],
+    packages = find_packages(),
     entry_points = dict(
         console_scripts = [
-            '%s-cli = %s:cli_main' % (module, module),
+            '%s-cli = %s.main:cli_main' % (module, module),
         ],
         gui_scripts = [
-            '%s = %s:gui_main' % (module, module),
+            '%s = %s.gui:gui_main' % (module, module),
         ],
     ),
     data_files = [
