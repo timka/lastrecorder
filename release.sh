@@ -16,12 +16,9 @@ VERSION=$PACKAGE_VERSION
 PREFIX=${NAME}_${VERSION}
 DIST=${NAME}-${VERSION}
 
-exit
-
 rm -f ${PREFIX}*.{deb,dsc,changes,tar.gz,upload}
 hg archive $DIST
 cd $DIST
 dpkg-buildpackage -uc -us
 cd ..
 rm -rf $DIST
-dput ${PREFIX}*.changes
