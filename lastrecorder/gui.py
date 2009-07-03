@@ -491,4 +491,6 @@ def gui_main(config=None, options=None, urls=None):
         lastrecorder.DEFAULTS['gui'] = True
         config, options, urls = setup(lastrecorder.DEFAULTS.copy())
     gui = GUI(config, options, urls)
+    gtk.threads_enter()
     gtk.main()
+    gtk.threads_leave()
