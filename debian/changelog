@@ -1,3 +1,9 @@
+lastrecorder (0.6.1) jaunty; urgency=low
+
+  * Fixed hang on Windows (gtk.threads_{enter,leave}) 
+
+ -- Timur Izhbulatov <timochka@gmail.com>  Sun, 05 Jul 2009 23:19:22 +0400
+
 lastrecorder (0.6) jaunty; urgency=low
 
   * Modularized code
