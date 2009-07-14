@@ -41,4 +41,8 @@ def quote_url(url):
     i = len('lastfm:')
     return url[:i] + q(url[i:])
 
-__all__ = ['quote_url', 'BackoffDelay', 'md5']
+
+def website(dialog, site):
+    pass
+
+__all__ = ['website', 'quote_url', 'BackoffDelay', 'md5']

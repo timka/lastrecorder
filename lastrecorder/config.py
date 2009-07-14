@@ -16,10 +16,10 @@ from __future__ import with_statement
 import os
 from ConfigParser import SafeConfigParser, NoOptionError, NoSectionError
 
-from lastrecorder import DOTDIR
+from lastrecorder import CONFIGDIR, NAME
 
 class Config(object):
-    filename = os.path.join(DOTDIR, 'config.cfg')
+    filename = os.path.join(CONFIGDIR, '%s.cfg' % NAME)
 
     class __metaclass__(type):
         bool_vars = ['strip_windows_incompat', 'strip_spaces',

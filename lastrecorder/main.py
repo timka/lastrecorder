@@ -42,7 +42,7 @@ from optparse import OptionParser
 from lastrecorder import util
 from lastrecorder.radio import RadioClient, HandshakeError, setup_urllib2
 from lastrecorder.config import Config
-from lastrecorder import LOGFILE, IS_WINDOWS, DOTDIR, DEFAULTS
+from lastrecorder import LOGFILE, IS_WINDOWS, CONFIGDIR, MUSICDIR, DEFAULTS
 from lastrecorder import release
 
 
@@ -122,9 +122,9 @@ def progress_cb(track, position, length):
 
 def setup(defaults):
     reload(sys).setdefaultencoding('utf-8')
-
-    if not os.path.exists(DOTDIR):
-        os.makedirs(DOTDIR)
+    for d in [CONFIGDIR, MUSICDIR]:
+        if not os.path.exists(d):
+            os.makedirs(d)
 
     config = Config()
     config.parse()

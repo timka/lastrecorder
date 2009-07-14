@@ -31,7 +31,7 @@ gtk.gdk.threads_init()
 
 import lastrecorder
 
-from lastrecorder import NAME, IS_WINDOWS
+from lastrecorder import NAME, AUTHORS, DISPLAY_NAME, IS_WINDOWS
 from lastrecorder.exceptions import SkipTrack
 from lastrecorder.radio import (RadioClient, HandshakeError, InvalidURL,
                                 NoContentAvailable, AdjustError)
@@ -59,6 +59,18 @@ class RecordStopButton(gtk.Button):
     def is_record(self):
         return self.get_image() == self.record
 
+
+class AboutDiablog(gtk.AboutDialog):
+    def __init__(self):
+        super(AboutDiablog, self).__init__()
+        self.set_name(DISPLAY_NAME)
+        self.set_version(release.version)
+        self.set_authors(AUTHORS)
+        self.set_website('http://timka.org/lastrecorder/')
+        self.set_website_label('www.timka.org')
+        text = 'Copyright © 2009 %s <timochka@gmail.com>' % ''.join(AUTHORS)
+        self.set_copyright(text)
+        self.child.show_all()
 
 
 class GUI(object):
@@ -88,7 +100,7 @@ class GUI(object):
         builder.add_from_file(gladepath)
 
         self.window = builder.get_object('mainwindow')
-        self.window.set_title('Last Recorder %s' % release.version)
+        self.window.set_title('%s %s' % (DISPLAY_NAME, release.version))
         if not IS_WINDOWS:
             icondir = os.path.join(sys.prefix, 'share', 'pixmaps')
             iconpath = os.path.join(icondir, '%s.png' % NAME)
@@ -131,6 +143,12 @@ class GUI(object):
                            padding=4)
         buttons.reorder_child(self.next, 1)
 
+        self.savemenuitem = builder.get_object('imagemenuitemsave')
+        self.aboutmenuitem = builder.get_object('imagemenuitemabout')
+        self.savemenuitem = builder.get_object('imagemenuitemsave')
+        gtk.about_dialog_set_url_hook(util.website)
+        self.quitmenuitem = builder.get_object('imagemenuitemquit')
+
         self.init_view()
         self.connect_signals()
         self.window.show()
@@ -161,6 +179,9 @@ class GUI(object):
         self.record_stop.connect('clicked', self.on_record_stop_clicked)
 
         self.next.connect('clicked', self.on_next_clicked)
+        self.aboutmenuitem.connect('activate', self.on_aboutmenuitem_activate)
+        self.savemenuitem.connect('activate', self.on_savemenuitem_activate)
+        self.quitmenuitem.connect('activate', self.on_window_destroy)
 
         self.window.connect('destroy', self.on_window_destroy)
 
@@ -484,6 +505,31 @@ class GUI(object):
         self.station_type.grab_focus()
         self.grab_default()
 
+    def on_aboutmenuitem_activate(self, widget, data=None):
+        about = AboutDiablog()
+        # XXX A ditry hack. Is there a better way to search widget hierarchy?
+        def get_widget_by_name(w, name):
+            if w.get_name() == name:
+                return w
+            if not hasattr(w, 'get_children'):
+                return
+            for c in w.get_children():
+                found = get_widget_by_name(c, name)
+                if found:
+                    return found
+        # Find link to website and focus on it
+        link_button = get_widget_by_name(about, 'GtkLinkButton')
+        if link_button:
+            link_button.grab_focus()
+
+        about.run()
+        about.destroy()
+
+    def on_savemenuitem_activate(self, widget, data=None):
+        self.update_password()
+        self.write_config()
+        self.update_status('Settings have been saved')
+
 
 def gui_main(config=None, options=None, urls=None):
     if config is None:
@@ -491,6 +537,6 @@ def gui_main(config=None, options=None, urls=None):
         lastrecorder.DEFAULTS['gui'] = True
         config, options, urls = setup(lastrecorder.DEFAULTS.copy())
     gui = GUI(config, options, urls)
-    gtk.threads_enter()
+    gtk.gdk.threads_enter()
     gtk.main()
-    gtk.threads_leave()
+    gtk.gdk.threads_leave()

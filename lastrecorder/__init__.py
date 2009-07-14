@@ -17,8 +17,12 @@ import sys
 
 __all__ = ['NAME', 'DOTDIR', 'MUSICDIR', 'LOGFILE', 'IS_WINDOWS', 'DEFAULTS']
 
+AUTHORS = ['Timur Izhbulatov']
+DISPLAY_NAME = 'Last Recorder'
 NAME = 'lastrecorder'
-DOTDIR = os.path.join(os.path.expanduser('~'), '.%s' % NAME)
+HOME = os.path.expanduser('~')
+CONFIGDIR = os.path.join(HOME, '.config', NAME)
+DOTDIR = os.path.join(HOME, '.local', 'share', NAME)
 MUSICDIR = os.path.join(DOTDIR, 'music')
 LOGFILE = os.path.join(DOTDIR, '%s.log' % NAME)
 IS_WINDOWS = sys.platform.lower().startswith('win')
