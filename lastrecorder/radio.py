@@ -232,6 +232,7 @@ class RadioClient(object):
                 os.unlink(path)
             except (OSError, IOError):
                 pass
+        self.temp_files = set()
 
     def urlopen(self, *args, **kw):
         res = urllib2.urlopen(*args, **kw)
@@ -387,6 +388,8 @@ class RadioClient(object):
                     os.unlink(tmp)
                 except (IOError, OSError):
                     pass
+                else:
+                    self.temp_files.remove(tmp)
 
     def skip_existing_track(self, track):
         if not self.skip_existing:

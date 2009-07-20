@@ -443,6 +443,7 @@ class GUI(object):
             if self.radio_thread is not None:
                 self.radio_thread.join()
             self.radio_thread = None
+            self.radio_client.remove_temp_files()
             self.url_status_message()
 
         record_stop.toggle()
@@ -455,6 +456,7 @@ class GUI(object):
     def on_next_clicked(self, widget, data=None):
         if self.radio_thread is not None and self.radio_thread.isAlive():
             self.skip_track = True
+            self.radio_client.remove_temp_files()
             self.init_progress()
 
     def on_username_changed(self, widget, data=None):
