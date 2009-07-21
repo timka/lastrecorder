@@ -1,3 +1,9 @@
+lastrecorder (0.6.3) jaunty; urgency=low
+
+  * Fixed URL opening on Windows 
+
+ -- Timur Izhbulatov <timochka@gmail.com>  Tue, 21 Jul 2009 18:39:02 +0400
+
 lastrecorder (0.6.2) jaunty; urgency=low
 
   * Added menu bar
