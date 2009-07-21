@@ -1,3 +1,10 @@
+lastrecorder (0.6.2) jaunty; urgency=low
+
+  * Added menu bar
+  * Removing temp file on Stop/Next
+
+ -- Timur Izhbulatov <timochka@gmail.com>  Tue, 21 Jul 2009 13:07:38 +0400
+
 lastrecorder (0.6.1) jaunty; urgency=low
 
   * Fixed hang on Windows (gtk.threads_{enter,leave}) 
