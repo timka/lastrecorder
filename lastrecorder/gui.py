@@ -20,6 +20,7 @@ import threading
 import socket
 import urllib2
 import httplib
+import webbrowser
 
 import pygtk
 pygtk.require("2.0")
@@ -58,6 +59,15 @@ class RecordStopButton(gtk.Button):
     @property
     def is_record(self):
         return self.get_image() == self.record
+
+
+def website(dialog, site):
+    '''
+    Open URL in browser
+    '''
+    t = threading.Thread(target=lambda url: webbrowser.open(url), args=(site,))
+    t.start()
+    return True
 
 
 class AboutDiablog(gtk.AboutDialog):
@@ -146,7 +156,8 @@ class GUI(object):
         self.savemenuitem = builder.get_object('imagemenuitemsave')
         self.aboutmenuitem = builder.get_object('imagemenuitemabout')
         self.savemenuitem = builder.get_object('imagemenuitemsave')
-        gtk.about_dialog_set_url_hook(util.website)
+
+        gtk.about_dialog_set_url_hook(website)
         self.quitmenuitem = builder.get_object('imagemenuitemquit')
 
         self.init_view()
@@ -521,16 +532,23 @@ class GUI(object):
                     return found
         # Find link to website and focus on it
         link_button = get_widget_by_name(about, 'GtkLinkButton')
+        if IS_WINDOWS:
+            link_button.connect('clicked', self.on_link_button_clicked)
         if link_button:
             link_button.grab_focus()
 
+        about.show_all()
         about.run()
-        about.destroy()
+        about.hide()
 
     def on_savemenuitem_activate(self, widget, data=None):
         self.update_password()
         self.write_config()
         self.update_status('Settings have been saved')
+
+    def on_link_button_clicked(self, widget, data=None):
+        uri = widget.get_uri()
+        return website(widget, uri)
 
 
 def gui_main(config=None, options=None, urls=None):

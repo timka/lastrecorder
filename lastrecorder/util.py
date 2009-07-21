@@ -42,7 +42,4 @@ def quote_url(url):
     return url[:i] + q(url[i:])
 
 
-def website(dialog, site):
-    pass
-
-__all__ = ['website', 'quote_url', 'BackoffDelay', 'md5']
+__all__ = ['quote_url', 'BackoffDelay', 'md5']
